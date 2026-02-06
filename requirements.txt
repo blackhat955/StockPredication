@@ -8,3 +8,4 @@ yfinance
 statsmodels
 scikit-learn
 mpld3
+gunicorn
