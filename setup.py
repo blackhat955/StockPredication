@@ -1,7 +1,10 @@
 from setuptools import setup, Extension
 import pybind11
+import sys
 
-cpp_args = ['-std=c++11', '-stdlib=libc++', '-mmacosx-version-min=10.7']
+cpp_args = ['-std=c++11']
+if sys.platform == 'darwin':
+    cpp_args.extend(['-stdlib=libc++', '-mmacosx-version-min=10.7'])
 
 ext_modules = [
     Extension(

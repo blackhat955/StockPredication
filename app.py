@@ -24,6 +24,42 @@ def warn(*args, **kwargs):
     pass
 warnings.warn = warn
 
+# --- Python Fallback Implementations ---
+def kalman_forecast_py(data, n_forecast, Q=1e-5, R=1e-3):
+    x_est = data[0]
+    P_est = 1.0
+    for z in data:
+        x_pred = x_est
+        P_pred = P_est + Q
+        K = P_pred / (P_pred + R)
+        x_est = x_pred + K * (z - x_pred)
+        P_est = (1.0 - K) * P_pred
+    return [x_est] * n_forecast
+
+def monte_carlo_forecast_py(data, n_forecast, n_sims=1000):
+    if len(data) < 2: return [data[-1]] * n_forecast
+    
+    log_returns = np.log(np.array(data[1:]) / np.array(data[:-1]))
+    mean = np.mean(log_returns)
+    var = np.var(log_returns)
+    stdev = np.std(log_returns)
+    drift = mean - (0.5 * var)
+    
+    last_price = data[-1]
+    avg_forecast = np.zeros(n_forecast)
+    
+    for _ in range(n_sims):
+        current_price = last_price
+        path = []
+        for _ in range(n_forecast):
+            shock = np.random.normal(0, 1)
+            current_price = current_price * np.exp(drift + stdev * shock)
+            path.append(current_price)
+        avg_forecast += np.array(path)
+        
+    return (avg_forecast / n_sims).tolist()
+# ---------------------------------------
+
 BS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css"
 app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
 server = app.server
@@ -321,7 +357,7 @@ def update_graph2(dropdown_selection2, radio_selection2, h_selection2, n_interva
              connect_y = [data_open['Open'].iloc[-1], pred_series_kalman.iloc[0]]
              fig.add_trace(go.Scatter(x=connect_x, y=connect_y, mode='lines', line=dict(color='cyan', dash='dash'), showlegend=False))
              
-             fig.add_trace(go.Scatter(x=pred_series_kalman.index, y=pred_series_kalman, mode='lines', name='Kalman Filter Forecast', line=dict(color='cyan')))
+             fig.add_trace(go.Scatter(x=pred_series_kalman.index, y=pred_series_kalman, mode='lines', name='Kalman Filter Forecast (C++)', line=dict(color='cyan')))
              
              kalman_diff = (pred_series_kalman.iloc[-1] - data_open['Open'].iloc[-1]) / data_open['Open'].iloc[-1] * 100
              kalman_diff = np.round(kalman_diff, 2)
@@ -331,10 +367,27 @@ def update_graph2(dropdown_selection2, radio_selection2, h_selection2, n_interva
              else:
                 textstr += f"Kalman Filter diff: {kalman_diff}%"
         else:
+             # Python Fallback
+             full_history = data_open['Open'].values.tolist()
+             preds_kalman = kalman_forecast_py(full_history, h_selection2)
+             
+             pred_dates_kalman = pd.date_range(data_open.index[-1] + pd.Timedelta(days=1), periods=h_selection2)
+             pred_series_kalman = pd.Series(preds_kalman, index=pred_dates_kalman)
+             
+             # Connect
+             connect_x = [data_open.index[-1], pred_series_kalman.index[0]]
+             connect_y = [data_open['Open'].iloc[-1], pred_series_kalman.iloc[0]]
+             fig.add_trace(go.Scatter(x=connect_x, y=connect_y, mode='lines', line=dict(color='cyan', dash='dash'), showlegend=False))
+             
+             fig.add_trace(go.Scatter(x=pred_series_kalman.index, y=pred_series_kalman, mode='lines', name='Kalman Filter Forecast (Py)', line=dict(color='cyan')))
+             
+             kalman_diff = (pred_series_kalman.iloc[-1] - data_open['Open'].iloc[-1]) / data_open['Open'].iloc[-1] * 100
+             kalman_diff = np.round(kalman_diff, 2)
+
              if textstr:
-                textstr += "<br>C++ extension required for Kalman Filter"
+                textstr += f"<br>Kalman Filter (Py) diff: {kalman_diff}%"
              else:
-                textstr = "C++ extension required for Kalman Filter"
+                textstr += f"Kalman Filter (Py) diff: {kalman_diff}%"
 
     if radio_selection2 == 'Monte Carlo (HFT)':
         # Monte Carlo Simulation (GBM)
@@ -356,7 +409,7 @@ def update_graph2(dropdown_selection2, radio_selection2, h_selection2, n_interva
              connect_y = [data_open['Open'].iloc[-1], pred_series_mc.iloc[0]]
              fig.add_trace(go.Scatter(x=connect_x, y=connect_y, mode='lines', line=dict(color='magenta', dash='dash'), showlegend=False))
              
-             fig.add_trace(go.Scatter(x=pred_series_mc.index, y=pred_series_mc, mode='lines', name='Monte Carlo (GBM) Forecast', line=dict(color='magenta')))
+             fig.add_trace(go.Scatter(x=pred_series_mc.index, y=pred_series_mc, mode='lines', name='Monte Carlo (GBM) Forecast (C++)', line=dict(color='magenta')))
              
              mc_diff = (pred_series_mc.iloc[-1] - data_open['Open'].iloc[-1]) / data_open['Open'].iloc[-1] * 100
              mc_diff = np.round(mc_diff, 2)
@@ -366,10 +419,27 @@ def update_graph2(dropdown_selection2, radio_selection2, h_selection2, n_interva
              else:
                 textstr += f"Monte Carlo diff: {mc_diff}%"
         else:
+             # Python Fallback
+             full_history = data_open['Open'].values.tolist()
+             preds_mc = monte_carlo_forecast_py(full_history, h_selection2)
+             
+             pred_dates_mc = pd.date_range(data_open.index[-1] + pd.Timedelta(days=1), periods=h_selection2)
+             pred_series_mc = pd.Series(preds_mc, index=pred_dates_mc)
+             
+             # Connect
+             connect_x = [data_open.index[-1], pred_series_mc.index[0]]
+             connect_y = [data_open['Open'].iloc[-1], pred_series_mc.iloc[0]]
+             fig.add_trace(go.Scatter(x=connect_x, y=connect_y, mode='lines', line=dict(color='magenta', dash='dash'), showlegend=False))
+             
+             fig.add_trace(go.Scatter(x=pred_series_mc.index, y=pred_series_mc, mode='lines', name='Monte Carlo (GBM) Forecast (Py)', line=dict(color='magenta')))
+             
+             mc_diff = (pred_series_mc.iloc[-1] - data_open['Open'].iloc[-1]) / data_open['Open'].iloc[-1] * 100
+             mc_diff = np.round(mc_diff, 2)
+             
              if textstr:
-                textstr += "<br>C++ extension required for Monte Carlo"
+                textstr += f"<br>Monte Carlo (Py) diff: {mc_diff}%"
              else:
-                textstr = "C++ extension required for Monte Carlo"
+                textstr += f"Monte Carlo (Py) diff: {mc_diff}%"
 
 
     fig.update_layout(template='plotly_dark', title=title, yaxis_title='Share Price')
