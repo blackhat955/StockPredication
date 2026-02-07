@@ -48,7 +48,7 @@ We compared different models to see which one predicted stock prices best (using
 *   **ElasticNet**: 0.615 (Best Performer)
 *   **LSTM**: 0.757
 *   **Baseline Naive**: 0.996
-*   **ARIMA**: 1.716
+*   **ARIMA**: 0.716
 
 ElasticNet worked the best for our tests, which is why it's the main focus of this app.
 
